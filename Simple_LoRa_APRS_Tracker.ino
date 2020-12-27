@@ -43,10 +43,9 @@
 #define _MAX_PACKET_SIZE	332
 
 /* User configurable variables */
-const static byte src_callsign[_AX25_CALLSIGN_LENGTH + 1] = "BX4ACV\x70";
+const static byte src_callsign[_AX25_CALLSIGN_LENGTH + 1] = "BX4ACV\x70"; // Your callsign here
 const static byte dst_callsign[_AX25_CALLSIGN_LENGTH + 1] = "APZ072\x72";
 
-/* NOTE: The LSB of SSID needs to be 1 */
 const static byte digi_callsign[][_AX25_CALLSIGN_LENGTH + 1] =
 {
 	"WIDE1 \x31",
@@ -155,14 +154,14 @@ void construct_packet(uint8_t *packet, unsigned int *len)
 	lat = fabs(lat);
 	lng = fabs(lng);
 
-	double lat_min = modf(lat, &lat) * 60;
-	double lng_min = modf(lng, &lng) * 60;
+	double lat_min = modf(lat, &lat) * 60.0;
+	double lng_min = modf(lng, &lng) * 60.0;
 
-	double lat_sec = modf(lat_min, &lat_min) * 60;
-	double lng_sec = modf(lng_min, &lng_min) * 60;
+	double lat_sec = modf(lat_min, &lat_min) * 60.0;
+	double lng_sec = modf(lng_min, &lng_min) * 60.0;
 
-	lat_sec = floor(lat_sec);
-	lng_sec = floor(lng_sec);
+	lat_sec = round(lat_sec);
+	lng_sec = round(lng_sec);
 
 	char pos[64];
 
@@ -223,7 +222,7 @@ void loop()
 void pps(void)
 {
 	timer--;
-	timer &= 0x3;
+	timer &= 0x3f;
 
 	return;
 }
