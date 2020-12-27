@@ -43,20 +43,18 @@
 #define _MAX_PACKET_SIZE	332
 
 /* User configurable variables */
-byte src_callsign[_AX25_CALLSIGN_LENGTH] = "BX4ACV\x70";
-byte dst_callsign[_AX25_CALLSIGN_LENGTH] = "APZ072\x72";
+const static byte src_callsign[_AX25_CALLSIGN_LENGTH + 1] = "BX4ACV\x70";
+const static byte dst_callsign[_AX25_CALLSIGN_LENGTH + 1] = "APZ072\x72";
 
 /* NOTE: The LSB of SSID needs to be 1 */
-byte digi_callsign[][_AX25_CALLSIGN_LENGTH] =
+const static byte digi_callsign[][_AX25_CALLSIGN_LENGTH + 1] =
 {
 	"WIDE1 \x31",
 	"WIDE2 \x32"
 };
 
-char icon[] = "/$";
-
-char comment[] = "SENT FROM BX4ACV'S TRACKER";
-
+const static char icon[] = "/$";
+const static char comment[] = "SENT FROM BX4ACV'S TRACKER";
 TinyGPSPlus gps;
 
 unsigned int volatile timer = UINT_MAX;
@@ -73,7 +71,9 @@ void setup(void)
 	pinMode(PPS, INPUT_PULLUP);
 	pinMode(LED_BUILTIN, OUTPUT);
 
-	//attachInterrupt(digitalPinToInterrupt(PPS), pps, RISING);
+	attachInterrupt(digitalPinToInterrupt(PPS), pps, RISING);
+
+	DBG.println("INIT DONE!");
 }
 
 /* Idle spinning */
@@ -115,27 +115,23 @@ void wait(int type)
 #define CONTROL_FIELD	0x3
 #define PROTOCOL_ID	0xF0
 
-void construct_packet(uint8_t packet[], unsigned int *len)
+void construct_packet(uint8_t *packet, unsigned int *len)
 {
 	int i = 0, j = 0;
 	(*len) = 0;
-	memset(&packet, 0x00, _MAX_PACKET_SIZE);
-	DBG.println("Memset");
+	memset(packet, 0x00, _MAX_PACKET_SIZE);
 
 	packet[(*len)++] = 0x7E;
 
-	/* Calculate & copy real callsign data */
 	for(i = 0; i < 7; i++)
 	{
 		packet[(*len)++] = dst_callsign[i] << 1;
 	}
-	DBG.println("dst callsign");
 
 	for(i = 0; i < 7; i++)
 	{
 		packet[(*len)++] = src_callsign[i] << 1;
 	}
-	DBG.println("src callsign");
 
 	for(j = 0; j < 2; j++)
 	{
@@ -145,7 +141,6 @@ void construct_packet(uint8_t packet[], unsigned int *len)
 			if(i == 6)
 				packet[(*len) - 1]++;
 		}
-		DBG.println("digi callsign");
 	}
 
 	packet[(*len)++] = CONTROL_FIELD;
@@ -153,7 +148,6 @@ void construct_packet(uint8_t packet[], unsigned int *len)
 
 	double lat = gps.location.lat();
 	double lng = gps.location.lng();
-	DBG.println("gps get location");
 
 	char lat_cardinal = lat > 0 ? 'N' : 'S';
 	char lng_cardinal = lng > 0 ? 'E' : 'W';
@@ -170,22 +164,20 @@ void construct_packet(uint8_t packet[], unsigned int *len)
 	lat_sec = floor(lat_sec);
 	lng_sec = floor(lng_sec);
 
-	DBG.println("location unit conversion complete");
-
 	char pos[64];
 
-	sprintf(pos, "!%2.0f%2.0f.%2.0f%c%c%3.0f%2.0f.%2.0f%c%c%3.0f/%3.0f%s /A=%6.0f",
-		lat, lat_min, lat_sec, lat_cardinal,
+	sprintf(pos, "!%02d%02d.%02d%c%c%03d%02d.%02d%c%c%03d/%03d%s /A=%06d",
+		(int)lat, (int)lat_min, (int)lat_sec, (int)lat_cardinal,
 		icon[0],
-		lng, lng_min, lng_sec, lng_cardinal,
+		(int)lng, (int)lng_min, (int)lng_sec, (int)lng_cardinal,
 		icon[1],
-		gps.course.isValid() ? gps.course.deg() : 0.0,
-		gps.speed.isValid() ? gps.speed.knots() : 0.0,
+		gps.course.isValid() ? (int)gps.course.deg() : 0,
+		gps.speed.isValid() ? (int)gps.speed.knots() : 0,
 		comment,
-		gps.altitude.isValid() ? gps.altitude.feet() : 0.0);
+		gps.altitude.isValid() ? (int)gps.altitude.feet() : 0);
 
 	DBG.println(pos);
-	strcpy(packet, pos);
+	strcpy(packet + (*len), pos);
 	(*len) += strlen(pos);
 
 	packet[(*len)++] = 0x7E;
@@ -199,28 +191,19 @@ void loop()
 {
 	uint8_t packet[_MAX_PACKET_SIZE];
 	unsigned int len = 0;
-	byte c;
-
-	/* Debu */
-
-	if((millis() - lastmillis) >= 10*1000)
-	{
-		DBG.println("Timer triggered!");
-		timer = 0;
-		lastmillis = millis();
-	}
+	char c;
 
 	/* Read GPS data */
 	if(GPS.available() > 0)
 	{
 		c = GPS.read();
 		gps.encode(c);
-		// DBG.write(c);
+		//DBG.write(c);
 	}
 
 	if(timer == 0)	/* Start transmitting APRS packet */
 	{
-		DBG.println("It's time to transmit!");
+		DBG.println("Time to transmit.");
 		if(gps.location.isValid())
 		{
 			DBG.println("GPS Valid");
@@ -229,7 +212,7 @@ void loop()
 			XCVR.write(packet, len);
 			DBG.println("Packet Sent");
 			wait(WAIT_AUX);
-			DBG.println("Waiting for transmission complete.");
+			DBG.println("transmission complete.");
 		}
 		timer = UINT_MAX;	/* Reset timer */
 	}
@@ -240,5 +223,7 @@ void loop()
 void pps(void)
 {
 	timer--;
-	timer &= 0x1F;
+	timer &= 0x3;
+
+	return;
 }
