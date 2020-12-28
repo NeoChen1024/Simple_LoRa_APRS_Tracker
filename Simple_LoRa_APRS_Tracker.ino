@@ -43,6 +43,7 @@
 #define _MAX_PACKET_SIZE	332
 
 /* User configurable variables */
+const static unsigned period = 45;
 const static byte src_callsign[_AX25_CALLSIGN_LENGTH + 1] = "BX4ACV\x70"; // Your callsign here
 const static byte dst_callsign[_AX25_CALLSIGN_LENGTH + 1] = "APZ072\x72";
 
@@ -53,10 +54,10 @@ const static byte digi_callsign[][_AX25_CALLSIGN_LENGTH + 1] =
 };
 
 const static char icon[] = "/$";
-const static char comment[] = "SENT FROM BX4ACV'S TRACKER";
+const static char comment[] = "SENT FROM BX4ACV'S HOMEMADE TRACKER";
 TinyGPSPlus gps;
 
-unsigned int volatile timer = UINT_MAX;
+unsigned int volatile timer = period;
 
 void pps(void);
 
@@ -136,11 +137,11 @@ void construct_packet(uint8_t *packet, unsigned int *len)
 	{
 		for(i = 0; i < 7; i++)
 		{
-			packet[(*len)++] = digi_callsign[j][i];
-			if(i == 6)
-				packet[(*len) - 1]++;
+			packet[(*len)++] = digi_callsign[j][i] << 1;
 		}
 	}
+
+	packet[(*len) - 1]++;
 
 	packet[(*len)++] = CONTROL_FIELD;
 	packet[(*len)++] = PROTOCOL_ID;
@@ -225,7 +226,8 @@ void loop()
 void pps(void)
 {
 	timer--;
-	timer &= 0x3f;
+	if(timer >= period)
+		timer = period;
 
 	return;
 }
