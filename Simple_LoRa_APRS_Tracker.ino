@@ -145,38 +145,41 @@ void construct_packet(uint8_t *packet, unsigned int *len)
 	packet[(*len)++] = CONTROL_FIELD;
 	packet[(*len)++] = PROTOCOL_ID;
 
-	double lat = gps.location.lat();
-	double lng = gps.location.lng();
+	double lat_f = gps.location.lat();
+	double lng_f = gps.location.lng();
 
-	char lat_cardinal = lat > 0 ? 'N' : 'S';
-	char lng_cardinal = lng > 0 ? 'E' : 'W';
+	char lat_cardinal = signbit(lat_f) ? 'S' : 'N';
+	char lng_cardinal = signbit(lng_f) ? 'W' : 'E';
 
-	lat = fabs(lat);
-	lng = fabs(lng);
+	long lat_sec = lround(fabs(lat_f) * 3600.0);
+	long lng_sec = lround(fabs(lng_f) * 3600.0);
 
-	double lat_min = modf(lat, &lat) * 60.0;
-	double lng_min = modf(lng, &lng) * 60.0;
+	long lat_min = lat_sec / 60;
+	long lng_min = lng_sec / 60;
 
-	double lat_sec = modf(lat_min, &lat_min) * 60.0;
-	double lng_sec = modf(lng_min, &lng_min) * 60.0;
+	long lat_deg = lat_min / 60;
+	long lng_deg = lng_min / 60;
 
-	lat_sec = round(lat_sec);
-	lng_sec = round(lng_sec);
+	lat_sec %= 60;
+	lng_sec %= 60;
+
+	lat_min %= 60;
+	lng_min %= 60;
 
 	char pos[64];
 
-	sprintf(pos, "!%02d%02d.%02d%c%c%03d%02d.%02d%c%c%03d/%03d%s /A=%06d",
-		(int)lat, (int)lat_min, (int)lat_sec, (int)lat_cardinal,
+	sprintf(pos, "!%02ld%02ld.%02ld%c%c%03ld%02ld.%02ld%c%c%03d/%03d%s /A=%06ld",
+		lat_deg, lat_min, lat_sec, lat_cardinal,
 		icon[0],
-		(int)lng, (int)lng_min, (int)lng_sec, (int)lng_cardinal,
+		lng_deg, lng_min, lng_sec, lng_cardinal,
 		icon[1],
 		gps.course.isValid() ? (int)gps.course.deg() : 0,
 		gps.speed.isValid() ? (int)gps.speed.knots() : 0,
 		comment,
-		gps.altitude.isValid() ? (int)gps.altitude.feet() : 0);
+		gps.altitude.isValid() ? (long)gps.altitude.feet() : 0);
 
 	DBG.println(pos);
-	strcpy(packet + (*len), pos);
+	strcpy((char *)packet + (*len), pos);
 	(*len) += strlen(pos);
 
 	packet[(*len)++] = 0x7E;
