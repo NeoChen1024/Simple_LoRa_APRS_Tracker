@@ -8,3 +8,6 @@ It receives GPS data from hardware serial port 3 (Serial3), and sends non-standa
 
 # Library Dependency
 This project needs `TinyGPSPlus` to parse NMEA sentences.
+
+# Todo
+Send compressed coordination to improve position precision.
