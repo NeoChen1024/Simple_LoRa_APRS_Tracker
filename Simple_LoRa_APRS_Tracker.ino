@@ -38,20 +38,30 @@
 
 /* AX.25 */
 #define _AX25_FLAG	((byte)0x7E)
-#define _AX25_CALLSIGN_LENGTH	7
+#define _AX25_CALLSIGN_LENGTH	6
 
 #define _MAX_PACKET_SIZE	332
 
-/* User configurable variables */
-const static unsigned period = 45;
-const static byte src_callsign[_AX25_CALLSIGN_LENGTH + 1] = "BX4ACV\x70"; // Your callsign here
-const static byte dst_callsign[_AX25_CALLSIGN_LENGTH + 1] = "APZ072\x72";
-
-const static byte digi_callsign[][_AX25_CALLSIGN_LENGTH + 1] =
+/* Callsign & SSID */
+typedef struct
 {
-	"WIDE1 \x31",
-	"WIDE2 \x32"
+	byte callsign[_AX25_CALLSIGN_LENGTH + 1];
+	byte ssid;
+} id_t;
+
+/* User configurable variables */
+const unsigned int period = 30;
+
+id_t callsigns[] =
+{
+	// Callsign, SSID
+	{"APZ072", 2},	// Destination
+	{"BX4ACV", 0},	// Source (replace this with your own callsign & SSID
+	{"WIDE1", 1},	// First repeater
+	{"WIDE2", 2}	// Second repeater (up to 8)
 };
+
+#define CALLSIGNS_NUM	(sizeof(callsigns) / sizeof(callsigns[0]))
 
 const static char icon[] = "/$";
 const static char comment[] = "SENT FROM BX4ACV'S HOMEMADE TRACKER";
@@ -117,27 +127,21 @@ void wait(int type)
 
 void construct_packet(uint8_t *packet, unsigned int *len)
 {
-	int i = 0, j = 0;
+	unsigned int i = 0, j = 0;
 	(*len) = 0;
 	memset(packet, 0x00, _MAX_PACKET_SIZE);
 
 	packet[(*len)++] = 0x7E;
 
-	for(i = 0; i < 7; i++)
-	{
-		packet[(*len)++] = dst_callsign[i] << 1;
-	}
-
-	for(i = 0; i < 7; i++)
-	{
-		packet[(*len)++] = src_callsign[i] << 1;
-	}
-
-	for(j = 0; j < 2; j++)
+	for(j = 0; j < CALLSIGNS_NUM; j++)
 	{
 		for(i = 0; i < 7; i++)
 		{
-			packet[(*len)++] = digi_callsign[j][i] << 1;
+			packet[(*len)++] = callsigns[j].callsign[i] << 1;
+			if(callsigns[j].callsign[i] == '\0')
+				packet[(*len) - 1] = '\x20' << 1;
+			if(i == 6)
+				packet[(*len) - 1] = ((j > 2 ? 0x30 : 0x70) + callsigns[j].ssid) << 1;
 		}
 	}
 
