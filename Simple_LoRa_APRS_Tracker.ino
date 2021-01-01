@@ -156,17 +156,17 @@ void construct_packet(uint8_t *packet, unsigned int *len)
 	char lat_cardinal = signbit(lat_f) ? 'S' : 'N';
 	char lng_cardinal = signbit(lng_f) ? 'W' : 'E';
 
-	long lat_sec = lround(fabs(lat_f) * 3600.0);
-	long lng_sec = lround(fabs(lng_f) * 3600.0);
+	long lat_decmin = lround(fabs(lat_f) * 6000.0);
+	long lng_decmin = lround(fabs(lng_f) * 6000.0);
 
-	long lat_min = lat_sec / 60;
-	long lng_min = lng_sec / 60;
+	long lat_min = lat_decmin / 100;
+	long lng_min = lng_decmin / 100;
 
 	long lat_deg = lat_min / 60;
 	long lng_deg = lng_min / 60;
 
-	lat_sec %= 60;
-	lng_sec %= 60;
+	lat_decmin %= 100;
+	lng_decmin %= 100;
 
 	lat_min %= 60;
 	lng_min %= 60;
@@ -174,9 +174,9 @@ void construct_packet(uint8_t *packet, unsigned int *len)
 	char pos[64];
 
 	sprintf(pos, "!%02ld%02ld.%02ld%c%c%03ld%02ld.%02ld%c%c%03d/%03d%s /A=%06ld",
-		lat_deg, lat_min, lat_sec, lat_cardinal,
+		lat_deg, lat_min, lat_decmin, lat_cardinal,
 		icon[0],
-		lng_deg, lng_min, lng_sec, lng_cardinal,
+		lng_deg, lng_min, lng_decmin, lng_cardinal,
 		icon[1],
 		gps.course.isValid() ? (int)gps.course.deg() : 0,
 		gps.speed.isValid() ? (int)gps.speed.knots() : 0,
