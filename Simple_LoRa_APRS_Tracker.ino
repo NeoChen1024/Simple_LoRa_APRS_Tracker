@@ -61,10 +61,11 @@ id_t callsigns[] =
 	{"WIDE2", 2}	// Second repeater (up to 8)
 };
 
-#define CALLSIGNS_NUM	(sizeof(callsigns) / sizeof(callsigns[0]))
-
 const static char icon[] = "/$";
 const static char comment[] = "SENT FROM BX4ACV'S HOMEMADE TRACKER";
+
+/* It's not recommended to change code below */
+#define CALLSIGNS_NUM	(sizeof(callsigns) / sizeof(callsigns[0]))
 TinyGPSPlus gps;
 
 unsigned int volatile timer = period;
