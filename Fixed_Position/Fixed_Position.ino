@@ -138,7 +138,7 @@ void construct_packet(uint8_t *packet, unsigned int *len)
 			if(callsigns[j].callsign[i] == '\0')
 				packet[(*len) - 1] = '\x20' << 1;
 			if(i == 6)
-				packet[(*len) - 1] = ((j > 2 ? 0x30 : 0x70) + callsigns[j].ssid) << 1;
+				packet[(*len) - 1] = ((j >= 2 ? 0x30 : 0x70) + callsigns[j].ssid) << 1;
 		}
 	}
 
