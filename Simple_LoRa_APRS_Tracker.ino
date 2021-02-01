@@ -23,17 +23,21 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <SoftwareSerial.h>
 #include <limits.h>
 #include <math.h>
 #include <TinyGPS++.h>
 
 /* Pin Configuration */
-#define AUX	2
-#define PPS	3
+#ifdef __AVR__
+#define AUX	3
+#define PPS	2
+#else
+#define AUX	27
+#define PPS	26
+#endif
 
 #define XCVR	Serial1
-#define GPS	Serial3
+#define GPS	Serial2
 #define DBG	Serial
 
 /* AX.25 */
@@ -50,13 +54,13 @@ typedef struct
 } id_t;
 
 /* User configurable variables */
-const unsigned int period = 30;
+const unsigned int period = 10;
 
 id_t callsigns[] =
 {
 	// Callsign, SSID
-	{"APZ072", 2},	// Destination
-	{"BX4ACV", 0},	// Source (replace this with your own callsign & SSID
+	{"APZ072", 2},	// Destination (Being used to identify APRS software)
+	{"BX4ACP", 2},	// Source (replace this with your own callsign & SSID
 	{"WIDE1", 1},	// First repeater
 	{"WIDE2", 2}	// Second repeater (up to 8)
 };
@@ -75,9 +79,13 @@ void pps(void);
 void setup(void)
 {
 	DBG.begin(115200);
+#ifdef __AVR__
 	XCVR.begin(9600);
 	GPS.begin(9600);
-
+#else
+  XCVR.begin(9600,SERIAL_8N1, 4, 2);    //Baud rate, parity mode, RX, TX
+  GPS.begin(9600,SERIAL_8N1, 16, 17);
+#endif
 	pinMode(AUX, INPUT_PULLUP);
 	pinMode(PPS, INPUT_PULLUP);
 	pinMode(LED_BUILTIN, OUTPUT);
@@ -142,7 +150,7 @@ void construct_packet(uint8_t *packet, unsigned int *len)
 			if(callsigns[j].callsign[i] == '\0')
 				packet[(*len) - 1] = '\x20' << 1;
 			if(i == 6)
-				packet[(*len) - 1] = ((j >= 2 ? 0x30 : 0x70) + callsigns[j].ssid) << 1;
+				packet[(*len) - 1] = ((j >= 2 ? 0x30 : 0x70) | callsigns[j].ssid) << 1;
 		}
 	}
 
@@ -154,8 +162,8 @@ void construct_packet(uint8_t *packet, unsigned int *len)
 	double lat_f = gps.location.lat();
 	double lng_f = gps.location.lng();
 
-	char lat_cardinal = signbit(lat_f) ? 'S' : 'N';
-	char lng_cardinal = signbit(lng_f) ? 'W' : 'E';
+	char lat_cardinal = lat_f < 0.0 ? 'S' : 'N';
+	char lng_cardinal = lng_f < 0.0 ? 'W' : 'E';
 
 	long lat_decmin = lround(fabs(lat_f) * 6000.0);
 	long lng_decmin = lround(fabs(lng_f) * 6000.0);
@@ -174,15 +182,16 @@ void construct_packet(uint8_t *packet, unsigned int *len)
 
 	char pos[64];
 
-	sprintf(pos, "!%02ld%02ld.%02ld%c%c%03ld%02ld.%02ld%c%c%03d/%03d%s /A=%06ld",
+	sprintf(pos, "!%02ld%02ld.%02ld%c%c%03ld%02ld.%02ld%c%c%03ld/%03ld%s",
 		lat_deg, lat_min, lat_decmin, lat_cardinal,
 		icon[0],
 		lng_deg, lng_min, lng_decmin, lng_cardinal,
 		icon[1],
-		gps.course.isValid() ? (int)gps.course.deg() : 0,
-		gps.speed.isValid() ? (int)gps.speed.knots() : 0,
-		comment,
-		gps.altitude.isValid() ? (long)gps.altitude.feet() : 0);
+		gps.course.isValid() ? lround(gps.course.deg()) : 0,
+		gps.speed.isValid() ? lround(gps.speed.knots()) : 0,
+		comment
+		//gps.altitude.isValid() ? lround(gps.altitude.feet()) : 0
+	);
 
 	DBG.println(pos);
 	strcpy((char *)packet + (*len), pos);
