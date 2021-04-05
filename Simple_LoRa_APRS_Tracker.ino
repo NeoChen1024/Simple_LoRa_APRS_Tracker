@@ -93,7 +93,7 @@ void setup(void)
 	radio.begin(438.2);
 	radio.setRfSwitchPins(17, 4);
 	radio.setOutputPower(22);
-	radio.setBandwidth(15.6);
+	radio.setBandwidth(62.5);
 	radio.setCodingRate(8);
 	radio.setSpreadingFactor(8);
 	radio.setPreambleLength(32);
