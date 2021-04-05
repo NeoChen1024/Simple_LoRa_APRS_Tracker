@@ -26,17 +26,12 @@
 #include <limits.h>
 #include <math.h>
 #include <TinyGPS++.h>
+#include <RadioLib.h>
+#include "minilzo.h"
 
 /* Pin Configuration */
-#ifdef __AVR__
-#define AUX	3
-#define PPS	2
-#else
-#define AUX	27
 #define PPS	26
-#endif
 
-#define XCVR	Serial1
 #define GPS	Serial2
 #define DBG	Serial
 
@@ -60,17 +55,25 @@ id_t callsigns[] =
 {
 	// Callsign, SSID
 	{"APZ072", 2},	// Destination (Being used to identify APRS software)
-	{"BX4ACP", 2},	// Source (replace this with your own callsign & SSID
+	{"BX4ACV", 2},	// Source (replace this with your own callsign & SSID
 	{"WIDE1", 1},	// First repeater
 	{"WIDE2", 2}	// Second repeater (up to 8)
 };
 
 const static char icon[] = "/$";
-const static char comment[] = "SENT FROM BX4ACV'S HOMEMADE TRACKER";
+const static char comment[] = "PUNY TRACKER ON THE RUN";
 
 /* It's not recommended to change code below */
 #define CALLSIGNS_NUM	(sizeof(callsigns) / sizeof(callsigns[0]))
 TinyGPSPlus gps;
+SPIClass * hspi = new SPIClass(HSPI);
+// NSS, DIO1, NRST, BUSY, SPI
+SX1268 radio = new Module(15, 33, 23, 39, *hspi);
+
+#define HEAP_ALLOC(var,size) \
+    lzo_align_t __LZO_MMODEL var [ ((size) + (sizeof(lzo_align_t) - 1)) / sizeof(lzo_align_t) ]
+
+static HEAP_ALLOC(wrkmem, LZO1X_1_MEM_COMPRESS);
 
 unsigned int volatile timer = period;
 
@@ -79,18 +82,25 @@ void pps(void);
 void setup(void)
 {
 	DBG.begin(115200);
-#ifdef __AVR__
-	XCVR.begin(9600);
-	GPS.begin(9600);
-#else
-  XCVR.begin(9600,SERIAL_8N1, 4, 2);    //Baud rate, parity mode, RX, TX
-  GPS.begin(9600,SERIAL_8N1, 16, 17);
-#endif
+	GPS.begin(9600,SERIAL_8N1, 16, );
 	pinMode(AUX, INPUT_PULLUP);
 	pinMode(PPS, INPUT_PULLUP);
 	pinMode(LED_BUILTIN, OUTPUT);
 
 	attachInterrupt(digitalPinToInterrupt(PPS), pps, RISING);
+
+	hspi->begin();
+	radio.begin(438.2);
+	radio.setRfSwitchPins(17, 4);
+	radio.setOutputPower(22);
+	radio.setBandwidth(15.6);
+	radio.setCodingRate(8);
+	radio.setSpreadingFactor(8);
+	radio.setPreambleLength(32);
+	radio.autoLDRO();
+	radio.setCRC(2); // Enable 16 bit CRC
+
+	lzo_init();
 
 	DBG.println("INIT DONE!");
 }
@@ -99,65 +109,34 @@ void setup(void)
 
 void spin(void)
 {
-	digitalWrite(LED_BUILTIN, digitalRead(AUX));
-}
-
-enum wait_type
-{
-	WAIT_GPS,
-	WAIT_XCVR,
-	WAIT_AUX
-};
-
-/* Waiting for data or operation completion */
-void wait(int type)
-{
-	switch(type)
-	{
-		case WAIT_AUX:
-			while(digitalRead(AUX) == LOW)
-				spin();
-			break;
-		case WAIT_XCVR:
-			while(XCVR.available() <= 0)
-				spin();
-			break;
-		case WAIT_GPS:
-			while(GPS.available() <= 0)
-				spin();
-			break;
-		default:
-			break;
-	}
 }
 
 #define CONTROL_FIELD	0x3
 #define PROTOCOL_ID	0xF0
 
-void construct_packet(uint8_t *packet, unsigned int *len)
+unsigned int construct_packet(unsigned char *packet)
 {
+	unsigned int len = 0;
 	unsigned int i = 0, j = 0;
-	(*len) = 0;
-	memset(packet, 0x00, _MAX_PACKET_SIZE);
-
-	packet[(*len)++] = 0x7E;
+	memset(packet, 0xFF, _MAX_PACKET_SIZE);
 
 	for(j = 0; j < CALLSIGNS_NUM; j++)
 	{
 		for(i = 0; i < 7; i++)
 		{
-			packet[(*len)++] = callsigns[j].callsign[i] << 1;
+			packet[len++] = callsigns[j].callsign[i] << 1;
 			if(callsigns[j].callsign[i] == '\0')
-				packet[(*len) - 1] = '\x20' << 1;
+				packet[len - 1] = '\x20' << 1;
 			if(i == 6)
-				packet[(*len) - 1] = ((j >= 2 ? 0x30 : 0x70) | callsigns[j].ssid) << 1;
+				packet[len - 1] = ((j >= 2 ? 0x30 : 0x70) | callsigns[j].ssid) << 1;
+				// Different bitmask for src / dst callsign & repeater callsign
 		}
 	}
 
-	packet[(*len) - 1]++;
+	packet[len - 1]++; // The last repeater callsign in the list should have this bit flag set
 
-	packet[(*len)++] = CONTROL_FIELD;
-	packet[(*len)++] = PROTOCOL_ID;
+	packet[len++] = CONTROL_FIELD;
+	packet[len++] = PROTOCOL_ID;
 
 	double lat_f = gps.location.lat();
 	double lng_f = gps.location.lng();
@@ -180,38 +159,39 @@ void construct_packet(uint8_t *packet, unsigned int *len)
 	lat_min %= 60;
 	lng_min %= 60;
 
-	char pos[64];
+	char pos[128];
 
-	sprintf(pos, "!%02ld%02ld.%02ld%c%c%03ld%02ld.%02ld%c%c%03ld/%03ld%s",
+	sprintf(pos, "!%02ld%02ld.%02ld%c%c%03ld%02ld.%02ld%c%c%03ld/%03ld /A=%06ld %s",
 		lat_deg, lat_min, lat_decmin, lat_cardinal,
 		icon[0],
 		lng_deg, lng_min, lng_decmin, lng_cardinal,
 		icon[1],
 		gps.course.isValid() ? lround(gps.course.deg()) : 0,
 		gps.speed.isValid() ? lround(gps.speed.knots()) : 0,
+		gps.altitude.isValid() ? lround(gps.altitude.feet()) : 0,
 		comment
-		//gps.altitude.isValid() ? lround(gps.altitude.feet()) : 0
 	);
 
 	DBG.println(pos);
-	strcpy((char *)packet + (*len), pos);
-	(*len) += strlen(pos);
+	memcpy(packet + len, pos, strlen(pos));;
+	len += strlen(pos);
 
-	packet[(*len)++] = 0x7E;
-
-	return;
+	return len;
 }
 
-long unsigned lastmillis = 0;
+#define _MAX_LORA_SIZE 253
+
+unsigned char packet[_MAX_PACKET_SIZE];
+unsigned char tx_buf[_MAX_LORA_SIZE];
+char dbg[128];
+lzo_uint tx_len;
+lzo_uint len = 0;
+int ret;
 
 void loop()
 {
-	uint8_t packet[_MAX_PACKET_SIZE];
-	unsigned int len = 0;
-	char c;
-
 	/* Read GPS data */
-	if(GPS.available() > 0)
+	while(GPS.available() > 0)
 	{
 		c = GPS.read();
 		gps.encode(c);
@@ -224,12 +204,14 @@ void loop()
 		if(gps.location.isValid())
 		{
 			DBG.println("GPS Valid");
-			construct_packet(packet, &len);
+			len = construct_packet(packet);
 			DBG.println("Packet Constructed");
-			XCVR.write(packet, len);
+			ret = lzo1x_1_compress(packet, len, tx_buf, &tx_len, wrkmem);
+			DBG.println("Packet Compressed");
+			sprintf(dbg, "(%d) Size ratio [%lu/%lu]", ret, len, tx_len);
+			DBG.println(dbg);
+			radio.transmit(tx_buf, tx_len);
 			DBG.println("Packet Sent");
-			wait(WAIT_AUX);
-			DBG.println("transmission complete.");
 		}
 		timer = UINT_MAX;	/* Reset timer */
 	}
@@ -241,7 +223,7 @@ void pps(void)
 {
 	timer--;
 	if(timer >= period)
-		timer = period;
+		timer = period - 1;
 
 	return;
 }
