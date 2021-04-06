@@ -82,8 +82,7 @@ void pps(void);
 void setup(void)
 {
 	DBG.begin(115200);
-	GPS.begin(9600,SERIAL_8N1, 16, );
-	pinMode(AUX, INPUT_PULLUP);
+	GPS.begin(9600,SERIAL_8N1, 16, 17);
 	pinMode(PPS, INPUT_PULLUP);
 	pinMode(LED_BUILTIN, OUTPUT);
 
@@ -193,9 +192,7 @@ void loop()
 	/* Read GPS data */
 	while(GPS.available() > 0)
 	{
-		c = GPS.read();
-		gps.encode(c);
-		//DBG.write(c);
+		gps.encode(GPS.read());
 	}
 
 	if(timer == 0)	/* Start transmitting APRS packet */
