@@ -84,7 +84,6 @@ void setup(void)
 	DBG.begin(115200);
 	GPS.begin(9600,SERIAL_8N1, 16, 17);
 	pinMode(PPS, INPUT_PULLUP);
-	pinMode(LED_BUILTIN, OUTPUT);
 
 	attachInterrupt(digitalPinToInterrupt(PPS), pps, RISING);
 
