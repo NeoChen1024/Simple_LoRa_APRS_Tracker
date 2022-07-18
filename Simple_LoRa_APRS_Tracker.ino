@@ -27,7 +27,6 @@
 #include <math.h>
 #include <TinyGPS++.h>
 #include <RadioLib.h>
-#include "minilzo.h"
 
 /* Pin Configuration */
 #define PPS	26
@@ -46,12 +45,12 @@ typedef struct
 {
 	byte callsign[_AX25_CALLSIGN_LENGTH + 1];
 	byte ssid;
-} id_t;
+} call_t;
 
 /* User configurable variables */
 const unsigned int period = 10;
 
-id_t callsigns[] =
+call_t callsigns[] =
 {
 	// Callsign, SSID
 	{"APZ072", 2},	// Destination (Being used to identify APRS software)
@@ -70,11 +69,6 @@ SPIClass * hspi = new SPIClass(HSPI);
 // NSS, DIO1, NRST, BUSY, SPI
 SX1268 radio = new Module(15, 33, 23, 39, *hspi);
 
-#define HEAP_ALLOC(var,size) \
-    lzo_align_t __LZO_MMODEL var [ ((size) + (sizeof(lzo_align_t) - 1)) / sizeof(lzo_align_t) ]
-
-static HEAP_ALLOC(wrkmem, LZO1X_1_MEM_COMPRESS);
-
 unsigned int volatile timer = period;
 
 void pps(void);
@@ -88,25 +82,17 @@ void setup(void)
 	attachInterrupt(digitalPinToInterrupt(PPS), pps, RISING);
 
 	hspi->begin();
-	radio.begin(438.2);
-	radio.setRfSwitchPins(17, 4);
+	radio.begin(430.64);
+	radio.setRfSwitchPins(2, 4);
 	radio.setOutputPower(22);
-	radio.setBandwidth(62.5);
+	radio.setBandwidth(125.0);
 	radio.setCodingRate(8);
-	radio.setSpreadingFactor(8);
+	radio.setSpreadingFactor(12);
 	radio.setPreambleLength(32);
 	radio.autoLDRO();
 	radio.setCRC(2); // Enable 16 bit CRC
 
-	lzo_init();
-
 	DBG.println("INIT DONE!");
-}
-
-/* Idle spinning */
-
-void spin(void)
-{
 }
 
 #define CONTROL_FIELD	0x3
@@ -182,8 +168,7 @@ unsigned int construct_packet(unsigned char *packet)
 unsigned char packet[_MAX_PACKET_SIZE];
 unsigned char tx_buf[_MAX_LORA_SIZE];
 char dbg[128];
-lzo_uint tx_len;
-lzo_uint len = 0;
+unsigned int len;
 int ret;
 
 void loop()
@@ -202,17 +187,11 @@ void loop()
 			DBG.println("GPS Valid");
 			len = construct_packet(packet);
 			DBG.println("Packet Constructed");
-			ret = lzo1x_1_compress(packet, len, tx_buf, &tx_len, wrkmem);
-			DBG.println("Packet Compressed");
-			sprintf(dbg, "(%d) Size ratio [%lu/%lu]", ret, len, tx_len);
-			DBG.println(dbg);
-			radio.transmit(tx_buf, tx_len);
+			radio.transmit(packet, len);
 			DBG.println("Packet Sent");
 		}
 		timer = UINT_MAX;	/* Reset timer */
 	}
-
-	spin();
 }
 
 void pps(void)
